@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #faf7f2;
+    color: #1c1612;
+  }
+
+  /* Ruled-paper background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 27px,
+      #ddd5c4 27px,
+      #ddd5c4 28px
+    );
+    opacity: 0.4;
+    z-index: 0;
+    pointer-events: none;
+  }
+}
+
+@layer utilities {
+  .scan-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(200,65,10,0.7), transparent);
+    animation: scanline 2s linear infinite;
+    box-shadow: 0 0 8px rgba(200,65,10,0.5);
+  }
+}
