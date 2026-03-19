@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import * as tf from "@tensorflow/tfjs/dist/tf.es2017.js";
+import * as tf from "@tensorflow/tfjs";
 import * as mobilenetModule from "@tensorflow-models/mobilenet";
 
 /**
@@ -46,18 +46,17 @@ export function useMobilenet() {
    */
   function embed(source) {
     if (!modelRef.current) throw new Error("Model not loaded");
-    // Do NOT use tf.tidy here — it disposes the returned tensor.
-    // Caller is responsible for disposing via tf.keep().
-    const img = tf.browser
-      .fromPixels(source)
-      .resizeBilinear([224, 224])
-      .toFloat()
-      .div(127.5)
-      .sub(1)
-      .expandDims(0);
-    const embedding = modelRef.current.infer(img, true).squeeze();
-    img.dispose();
-    return embedding;
+    return tf.tidy(() => {
+      const img = tf.browser
+        .fromPixels(source)
+        .resizeBilinear([224, 224])
+        .toFloat()
+        .div(127.5)
+        .sub(1)
+        .expandDims(0);
+      return modelRef.current.infer(img, true).squeeze();
+    });
   }
+
   return { status, message, embed, isReady: status === "ready" };
 }

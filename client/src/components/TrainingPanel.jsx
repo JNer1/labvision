@@ -1,21 +1,37 @@
 export default function TrainingPanel({
-  classes, totalSamples, isTrained, isTraining,
-  trainLog, progress, trainTag,
-  onTrain, onReset, onSave, onLoad,
+  classes,
+  totalSamples,
+  isTrained,
+  isTraining,
+  trainLog,
+  progress,
+  trainTag,
+  onTrain,
+  onReset,
+  onSave,
+  onLoad,
 }) {
-  const canTrain = classes.length >= 2 && classes.every((c) => c.samples.length >= 3)
+  const canTrain =
+    classes.length >= 2 && classes.every((c) => c.samples.length >= 3);
 
   return (
     <div className="p-4 space-y-4">
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { num: totalSamples, label: 'Total Samples' },
-          { num: classes.length,  label: 'Classes'       },
+          { num: totalSamples, label: "Total Samples" },
+          { num: classes.length, label: "Classes" },
         ].map(({ num, label }) => (
-          <div key={label} className="bg-sand border border-rule p-3 text-center">
-            <div className="font-display text-3xl font-bold text-ember leading-none">{num}</div>
-            <div className="font-mono text-[9px] text-ink2 tracking-[2px] uppercase mt-1">{label}</div>
+          <div
+            key={label}
+            className="bg-sand border border-rule p-3 text-center"
+          >
+            <div className="font-display text-3xl font-bold text-ember leading-none">
+              {num}
+            </div>
+            <div className="font-mono text-[9px] text-ink2 tracking-[2px] uppercase mt-1">
+              {label}
+            </div>
           </div>
         ))}
       </div>
@@ -43,7 +59,7 @@ export default function TrainingPanel({
                      hover:bg-[#1e5438] disabled:opacity-30 disabled:cursor-not-allowed
                      transition-colors"
         >
-          {isTraining ? '⟳ Training…' : '▶ Train Model'}
+          {isTraining ? "⟳ Training…" : "▶ Train Model"}
         </button>
         <button
           onClick={onReset}
@@ -69,13 +85,20 @@ export default function TrainingPanel({
         >
           ↓ Save Model
         </button>
-        <label className="font-mono text-[10px] tracking-wider uppercase py-1.5 px-3
+        <label
+          className="font-mono text-[10px] tracking-wider uppercase py-1.5 px-3
                           border border-rule text-ink2 cursor-pointer
-                          hover:bg-ink hover:text-paper hover:border-ink transition-colors">
+                          hover:bg-ink hover:text-paper hover:border-ink transition-colors"
+        >
           ↑ Load Model
-          <input type="file" accept=".json" className="hidden" onChange={onLoad} />
+          <input
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={onLoad}
+          />
         </label>
       </div>
     </div>
-  )
+  );
 }

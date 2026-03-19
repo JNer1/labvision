@@ -1,4 +1,4 @@
-import * as tf from "@tensorflow/tfjs/dist/tf.es2017.js";
+import * as tf from "@tensorflow/tfjs";
 
 /**
  * Simple cosine-similarity KNN classifier that operates on TF tensors.

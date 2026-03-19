@@ -10,7 +10,7 @@
 
   /* Ruled-paper background */
   body::before {
-    content: '';
+    content: "";
     position: fixed;
     inset: 0;
     background-image: repeating-linear-gradient(
@@ -32,8 +32,13 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(200,65,10,0.7), transparent);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(200, 65, 10, 0.7),
+      transparent
+    );
     animation: scanline 2s linear infinite;
-    box-shadow: 0 0 8px rgba(200,65,10,0.5);
+    box-shadow: 0 0 8px rgba(200, 65, 10, 0.5);
   }
 }

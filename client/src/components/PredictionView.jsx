@@ -4,15 +4,15 @@ export default function PredictionView({ prediction, classes }) {
       <p className="font-mono text-xs text-ink2 italic text-center py-6 px-4">
         Train a model and switch to Predict mode.
       </p>
-    )
+    );
   }
 
   const sorted = Object.entries(prediction.probs)
     .map(([i, p]) => ({ i: parseInt(i), p, cls: classes[parseInt(i)] }))
     .filter((x) => x.cls)
-    .sort((a, b) => b.p - a.p)
+    .sort((a, b) => b.p - a.p);
 
-  const top = sorted[0]
+  const top = sorted[0];
 
   return (
     <div>
@@ -27,7 +27,7 @@ export default function PredictionView({ prediction, classes }) {
             style={{ background: top?.cls?.color }}
           />
           <span className="font-display text-xl italic font-bold text-ink truncate">
-            {top?.cls?.name ?? '—'}
+            {top?.cls?.name ?? "—"}
           </span>
           <span className="ml-auto font-mono text-sm font-bold text-ember">
             {Math.round((top?.p ?? 0) * 100)}%
@@ -43,7 +43,9 @@ export default function PredictionView({ prediction, classes }) {
               className="w-2 h-2 rounded-full flex-shrink-0"
               style={{ background: cls.color }}
             />
-            <span className="flex-1 font-mono text-xs truncate">{cls.name}</span>
+            <span className="flex-1 font-mono text-xs truncate">
+              {cls.name}
+            </span>
             <div className="w-20 h-1 bg-rule flex-shrink-0">
               <div
                 className="h-full bg-forest transition-all duration-300"
@@ -57,5 +59,5 @@ export default function PredictionView({ prediction, classes }) {
         ))}
       </div>
     </div>
-  )
+  );
 }
