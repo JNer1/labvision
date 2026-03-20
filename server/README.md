@@ -1,4 +1,4 @@
-# VisionLab — Python Backend
+# Labvision Server
 
 A FastAPI server that persists classes and samples to a local SQLite file (`visionlab.db`).
 
@@ -23,15 +23,3 @@ The database file `visionlab.db` is created automatically in this folder on firs
 ## API Docs
 
 FastAPI generates interactive docs automatically — visit http://127.0.0.1:8000/docs once the server is running.
-
-## Endpoints
-
-| Method | Path                          | Description                  |
-|--------|-------------------------------|------------------------------|
-| GET    | /classes                      | List all classes             |
-| POST   | /classes                      | Create a class               |
-| DELETE | /classes/{id}                 | Delete a class + its samples |
-| GET    | /classes/{id}/samples         | List samples for a class     |
-| POST   | /samples                      | Add a sample                 |
-| DELETE | /samples/{id}                 | Delete a sample              |
-| DELETE | /classes/{id}/samples         | Clear all samples for class  |
