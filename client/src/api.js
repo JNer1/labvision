@@ -1,7 +1,9 @@
-const BASE = "http://localhost:8000";
+import { env } from "../env";
+
+const BASE_API = env.BASE_API;
 
 async function request(method, path, body) {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${BASE_API}${path}`, {
     method,
     headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,

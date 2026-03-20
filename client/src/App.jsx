@@ -1,6 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { api } from "./api.js";
 import { useWebSocket } from "./useWebSocket.js";
+import {
+  useModelStatus,
+  useClasses,
+  useSamples,
+  useAddClass,
+  useDeleteClass,
+  useAddSample,
+  useDeleteSample,
+  useClearSamples,
+  useTrain,
+} from "./hooks/useQueries.js";
 
 import StatusBar from "./components/StatusBar.jsx";
 import Panel from "./components/Panel.jsx";
@@ -12,44 +22,105 @@ import TrainingPanel from "./components/TrainingPanel.jsx";
 import PredictionView from "./components/PredictionView.jsx";
 
 export default function App() {
-  // ── State ──────────────────────────────────────────────────────────────────
-  const [classes, setClasses] = useState([]);
+  // ── Local UI state (not server state) ─────────────────────────────────────
   const [selectedClass, setSelectedClass] = useState(null);
   const [mode, setMode] = useState("annotate");
   const [cameraOn, setCameraOn] = useState(false);
-  const [serverReady, setServerReady] = useState(false);
-
-  // Training
+  const [prediction, setPrediction] = useState(null);
   const [isTrained, setIsTrained] = useState(false);
-  const [isTraining, setIsTraining] = useState(false);
   const [trainLog, setTrainLog] = useState(
     "Add at least 2 classes with 3+ samples each.",
   );
   const [progress, setProgress] = useState(0);
   const [trainTag, setTrainTag] = useState("IDLE");
 
-  // Prediction
-  const [prediction, setPrediction] = useState(null);
-
-  // Status
-  const [appStatus, setAppStatus] = useState({
-    status: "loading",
-    message: "Connecting to server…",
-  });
-
-  // ── Refs ───────────────────────────────────────────────────────────────────
   const cameraRef = useRef(null);
   const annotatorRef = useRef(null);
-  const rafRef = useRef(null); // requestAnimationFrame handle
+  const rafRef = useRef(null);
 
-  // ── WebSocket — only active in predict mode with camera on ─────────────────
+  // ── Server state via Tanstack Query ───────────────────────────────────────
+  const modelStatus = useModelStatus();
+  const classesQuery = useClasses();
+
+  const classes = classesQuery.data ?? [];
+  const serverReady = !classesQuery.isLoading && !classesQuery.isError;
+
+  // Load samples for selected class
+  const selectedClassId =
+    selectedClass != null ? classes[selectedClass]?.id : null;
+  const samplesQuery = useSamples(selectedClassId);
+  const currentSamples = samplesQuery.data ?? [];
+
+  // ── Mutations ──────────────────────────────────────────────────────────────
+  const addClassMut = useAddClass();
+  const deleteClassMut = useDeleteClass();
+  const addSampleMut = useAddSample();
+  const deleteSampleMut = useDeleteSample();
+  const clearSamplesMut = useClearSamples();
+  const trainMut = useTrain();
+
+  // ── Sync model status on load ──────────────────────────────────────────────
+  useEffect(() => {
+    if (modelStatus.data?.trained) {
+      setIsTrained(true);
+      setTrainTag("TRAINED ✓");
+      setProgress(100);
+      setTrainLog(
+        `Model loaded — ${modelStatus.data.n_samples} samples, ` +
+          `${modelStatus.data.n_classes} classes.`,
+      );
+    }
+  }, [modelStatus.data]);
+
+  // ── Status bar message ─────────────────────────────────────────────────────
+  function getAppStatus() {
+    if (modelStatus.isLoading || classesQuery.isLoading)
+      return { status: "loading", message: "Connecting to server…" };
+    if (classesQuery.isError)
+      return {
+        status: "error",
+        message: "Cannot reach server — is python server.py running?",
+      };
+    if (addSampleMut.isPending)
+      return { status: "loading", message: "Embedding sample on server…" };
+    if (trainMut.isPending)
+      return { status: "loading", message: "Training KNN on server…" };
+    if (trainMut.isError)
+      return {
+        status: "error",
+        message: trainMut.error?.message ?? "Training failed.",
+      };
+    if (addSampleMut.isError)
+      return {
+        status: "error",
+        message: addSampleMut.error?.message ?? "Capture failed.",
+      };
+    if (mode === "predict" && cameraOn) {
+      if (wsStatus === "open")
+        return {
+          status: "ready",
+          message: "WebSocket connected — live predictions running.",
+        };
+      if (wsStatus === "connecting")
+        return {
+          status: "loading",
+          message: "Connecting to prediction WebSocket…",
+        };
+      return {
+        status: "loading",
+        message: "WebSocket disconnected — reconnecting…",
+      };
+    }
+    return {
+      status: "ready",
+      message: `Server connected. ${classes.length} classes loaded.`,
+    };
+  }
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
   const wsEnabled = mode === "predict" && cameraOn && isTrained;
 
   const handleWsMessage = useCallback((data) => {
-    if (data.error) {
-      console.warn("Prediction error from server:", data.error);
-      return;
-    }
     if (data.probabilities) setPrediction(data.probabilities);
   }, []);
 
@@ -58,7 +129,7 @@ export default function App() {
     enabled: wsEnabled,
   });
 
-  // ── Prediction frame loop — rAF drives frame capture, WS sends them ────────
+  // rAF frame capture loop
   useEffect(() => {
     if (!wsEnabled || wsStatus !== "open") {
       cancelAnimationFrame(rafRef.current);
@@ -66,19 +137,17 @@ export default function App() {
     }
 
     let lastSent = 0;
-    const MIN_INTERVAL = 100; // cap at ~10fps to avoid overwhelming server
+    const MIN_INTERVAL = 100;
 
     function loop(timestamp) {
       if (timestamp - lastSent >= MIN_INTERVAL) {
         const video = cameraRef.current?.getVideo();
         const cap = cameraRef.current?.getCapture();
-
         if (video && cap && cameraRef.current?.hasStream()) {
           cap.width = video.videoWidth || 640;
           cap.height = video.videoHeight || 480;
           cap.getContext("2d").drawImage(video, 0, 0);
-          const sent = sendFrame(cap.toDataURL("image/jpeg", 0.6));
-          if (sent) lastSent = timestamp;
+          if (sendFrame(cap.toDataURL("image/jpeg", 0.6))) lastSent = timestamp;
         }
       }
       rafRef.current = requestAnimationFrame(loop);
@@ -88,84 +157,18 @@ export default function App() {
     return () => cancelAnimationFrame(rafRef.current);
   }, [wsEnabled, wsStatus, sendFrame]);
 
-  // ── Connect to server + load data ──────────────────────────────────────────
-  useEffect(() => {
-    async function init() {
-      try {
-        const status = await api.modelStatus();
-        if (status.trained) {
-          setIsTrained(true);
-          setTrainTag("TRAINED ✓");
-          setProgress(100);
-          setTrainLog(
-            `Model loaded — ${status.n_samples} samples, ${status.n_classes} classes.`,
-          );
-        }
-
-        const savedClasses = await api.listClasses();
-        const hydrated = await Promise.all(
-          savedClasses.map(async (cls) => {
-            const rows = await api.listSamples(cls.id);
-            const thumbs = rows.map((r) => r.thumb);
-            const sampleIds = rows.map((r) => r.id);
-            return { ...cls, thumbs, sampleIds };
-          }),
-        );
-
-        setClasses(hydrated);
-        setServerReady(true);
-        setAppStatus({
-          status: "ready",
-          message: `Server connected. ${hydrated.length} classes loaded.`,
-        });
-      } catch (e) {
-        setAppStatus({
-          status: "error",
-          message: "Cannot reach server — is python server.py running?",
-        });
-      }
-    }
-    init();
-  }, []);
-
-  // Reflect WS status in the app status bar while in predict mode
-  useEffect(() => {
-    if (mode !== "predict" || !cameraOn) return;
-    if (wsStatus === "open") {
-      setAppStatus({
-        status: "ready",
-        message: "WebSocket connected — live predictions running.",
-      });
-    } else if (wsStatus === "connecting") {
-      setAppStatus({
-        status: "loading",
-        message: "Connecting to prediction WebSocket…",
-      });
-    } else {
-      setAppStatus({
-        status: "loading",
-        message: "WebSocket disconnected — reconnecting…",
-      });
-    }
-  }, [wsStatus, mode, cameraOn]);
-
   // ── Camera ─────────────────────────────────────────────────────────────────
   async function toggleCamera() {
     if (cameraOn) {
       cameraRef.current?.stopCamera();
       setCameraOn(false);
       setPrediction(null);
-      setAppStatus({ status: "ready", message: "Camera stopped." });
     } else {
       try {
         await cameraRef.current?.startCamera();
         setCameraOn(true);
-        // wsEnabled will flip true → useWebSocket connects automatically
       } catch {
-        setAppStatus({
-          status: "error",
-          message: "Camera access denied — check browser permissions.",
-        });
+        // error reflected via getAppStatus
       }
     }
   }
@@ -178,58 +181,29 @@ export default function App() {
     }
     setMode(m);
     if (m === "annotate") {
-      // Stop camera — WS disconnects automatically because wsEnabled → false
       cameraRef.current?.stopCamera();
       setCameraOn(false);
       setPrediction(null);
-      setAppStatus({ status: "ready", message: "Switched to annotate mode." });
     }
   }
 
-  // ── Capture from image annotator ───────────────────────────────────────────
+  // ── Capture crop ───────────────────────────────────────────────────────────
   const captureFromImage = useCallback(async () => {
-    if (selectedClass === null) return;
-    if (!annotatorRef.current?.hasImage()) return;
-
+    if (selectedClass === null || !annotatorRef.current?.hasImage()) return;
     const dataUrl = annotatorRef.current.getCropDataUrl();
     if (!dataUrl) return;
 
-    setAppStatus({ status: "loading", message: "Embedding sample on server…" });
-    try {
-      const { id: sampleId } = await api.createSample({
-        class_id: classes[selectedClass].id,
-        thumb: dataUrl,
-      });
-
-      setClasses((prev) => {
-        const next = [...prev];
-        next[selectedClass] = {
-          ...next[selectedClass],
-          thumbs: [...next[selectedClass].thumbs, dataUrl],
-          sampleIds: [...(next[selectedClass].sampleIds || []), sampleId],
-        };
-        return next;
-      });
-
-      annotatorRef.current.clearBox();
-      setAppStatus({
-        status: "ready",
-        message: "Sample captured and embedded.",
-      });
-    } catch (e) {
-      setAppStatus({
-        status: "error",
-        message: `Capture failed: ${e.message}`,
-      });
-    }
-  }, [selectedClass, classes]);
+    await addSampleMut.mutateAsync({
+      classId: classes[selectedClass].id,
+      thumb: dataUrl,
+    });
+    annotatorRef.current.clearBox();
+  }, [selectedClass, classes, addSampleMut]);
 
   // ── Training ───────────────────────────────────────────────────────────────
   async function trainModel() {
-    setIsTraining(true);
     setTrainTag("TRAINING");
     setProgress(0);
-    setAppStatus({ status: "loading", message: "Training KNN on server…" });
     setTrainLog("Sending training request to server…");
 
     let fakeProgress = 0;
@@ -239,27 +213,20 @@ export default function App() {
     }, 100);
 
     try {
-      const result = await api.train();
-      clearInterval(ticker);
-      setProgress(100);
+      const result = await trainMut.mutateAsync();
       setIsTrained(true);
       setTrainTag("TRAINED ✓");
+      setProgress(100);
       setTrainLog(
         `Done! ${result.n_samples} samples · ${result.n_classes} classes · ` +
           `train accuracy ${result.train_accuracy}%`,
       );
-      setAppStatus({
-        status: "ready",
-        message: `Model trained — ${result.train_accuracy}% accuracy on training data.`,
-      });
-    } catch (e) {
-      clearInterval(ticker);
-      setProgress(0);
+    } catch {
       setTrainTag("ERROR");
-      setTrainLog(`Training failed: ${e.message}`);
-      setAppStatus({ status: "error", message: e.message });
+      setProgress(0);
+      setTrainLog(`Training failed: ${trainMut.error?.message}`);
     } finally {
-      setIsTraining(false);
+      clearInterval(ticker);
     }
   }
 
@@ -269,90 +236,58 @@ export default function App() {
     setProgress(0);
     setTrainLog("Model reset. Retrain when ready.");
     setPrediction(null);
-    setAppStatus({ status: "ready", message: "Model reset." });
   }
 
   // ── Class management ───────────────────────────────────────────────────────
   async function addClass(cls) {
-    try {
-      const created = await api.createClass(cls.name, cls.color);
-      setClasses((prev) => [
-        ...prev,
-        { ...cls, id: created.id, thumbs: [], sampleIds: [] },
-      ]);
-    } catch (e) {
-      setAppStatus({
-        status: "error",
-        message: `Failed to add class: ${e.message}`,
-      });
-    }
+    await addClassMut.mutateAsync({ name: cls.name, color: cls.color });
   }
 
   async function deleteClass(i) {
     if (!confirm(`Delete class "${classes[i].name}" and all its samples?`))
       return;
-    try {
-      await api.deleteClass(classes[i].id);
-      setClasses((prev) => prev.filter((_, idx) => idx !== i));
-      setSelectedClass((prev) =>
-        prev === i ? null : prev > i ? prev - 1 : prev,
-      );
+    await deleteClassMut.mutateAsync(classes[i].id);
+    setSelectedClass((prev) =>
+      prev === i ? null : prev > i ? prev - 1 : prev,
+    );
+    if (isTrained) {
       setIsTrained(false);
-    } catch (e) {
-      setAppStatus({
-        status: "error",
-        message: `Failed to delete class: ${e.message}`,
-      });
+      setTrainTag("IDLE");
     }
   }
 
   async function deleteThumb(thumbIdx) {
-    if (selectedClass === null) return;
-    const sampleId = classes[selectedClass].sampleIds?.[thumbIdx];
-    if (!sampleId) return;
-    try {
-      await api.deleteSample(sampleId);
-      setClasses((prev) => {
-        const next = [...prev];
-        const cls = { ...next[selectedClass] };
-        cls.thumbs = cls.thumbs.filter((_, i) => i !== thumbIdx);
-        cls.sampleIds = cls.sampleIds.filter((_, i) => i !== thumbIdx);
-        next[selectedClass] = cls;
-        return next;
-      });
-    } catch (e) {
-      setAppStatus({
-        status: "error",
-        message: `Failed to delete sample: ${e.message}`,
-      });
-    }
+    const sample = currentSamples[thumbIdx];
+    if (!sample) return;
+    await deleteSampleMut.mutateAsync({
+      sampleId: sample.id,
+      classId: selectedClassId,
+    });
   }
 
   async function clearSamples() {
-    if (selectedClass === null) return;
-    try {
-      await api.deleteSamplesByClass(classes[selectedClass].id);
-      setClasses((prev) => {
-        const next = [...prev];
-        next[selectedClass] = {
-          ...next[selectedClass],
-          thumbs: [],
-          sampleIds: [],
-        };
-        return next;
-      });
-    } catch (e) {
-      setAppStatus({
-        status: "error",
-        message: `Failed to clear samples: ${e.message}`,
-      });
-    }
+    if (selectedClassId == null) return;
+    await clearSamplesMut.mutateAsync(selectedClassId);
   }
 
   // ── Derived ────────────────────────────────────────────────────────────────
-  const totalSamples = classes.reduce((a, c) => a + (c.thumbs?.length ?? 0), 0);
+  // Build the cls object SampleGallery expects from the query data
+  const selectedCls =
+    selectedClass != null
+      ? {
+          ...classes[selectedClass],
+          thumbs: currentSamples.map((s) => s.thumb),
+          sampleIds: currentSamples.map((s) => s.id),
+        }
+      : null;
 
-  // WS indicator badge
+  const totalSamples =
+    classes.reduce((a, c) => {
+      // Use per-class sample counts from the classes list if available
+      return a + (c.sample_count ?? 0);
+    }, 0) || currentSamples.length; // fallback to selected class count
+
+  const appStatus = getAppStatus();
   const wsBadge = wsEnabled
     ? wsStatus === "open"
       ? "WS ●"
@@ -362,7 +297,6 @@ export default function App() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="relative z-10 max-w-5xl mx-auto px-4 py-8 pb-20">
-      {/* Header */}
       <header className="border-b-2 border-ink pb-4 mb-6 flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-4xl font-bold tracking-tight leading-none">
@@ -375,16 +309,14 @@ export default function App() {
         <div className="font-mono text-[10px] text-ink2 tracking-widest uppercase text-right leading-relaxed">
           FastAPI · SQLite · WebSocket
           <br />
-          scikit-learn KNN
+          Tanstack Query · scikit-learn
         </div>
       </header>
 
       <StatusBar status={appStatus.status} message={appStatus.message} />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 items-start">
-        {/* ── Left column ── */}
         <div className="space-y-5">
-          {/* Annotate — image upload */}
           {mode === "annotate" && (
             <Panel title="Image Annotator" badge="ANNOTATE">
               <div className="flex border-b border-ink">
@@ -400,25 +332,26 @@ export default function App() {
                   </button>
                 ))}
               </div>
-
               <ImageAnnotator
                 ref={annotatorRef}
                 selectedClass={selectedClass}
                 classes={classes}
               />
-
               <div className="flex gap-2 p-3 border-t border-ink">
                 <button
                   onClick={captureFromImage}
-                  disabled={!serverReady || selectedClass === null}
+                  disabled={
+                    !serverReady ||
+                    selectedClass === null ||
+                    addSampleMut.isPending
+                  }
                   className="flex-1 font-mono text-xs tracking-wider uppercase py-2 px-4
                     bg-ember text-white border border-ember
                     hover:bg-[#a33208] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
-                  ⊕ Capture Crop
+                  {addSampleMut.isPending ? "⟳ Embedding…" : "⊕ Capture Crop"}
                 </button>
               </div>
-
               <div className="px-3 pb-3">
                 <p className="font-mono text-[10px] text-ink2 italic">
                   {selectedClass !== null
@@ -429,7 +362,6 @@ export default function App() {
             </Panel>
           )}
 
-          {/* Predict — live camera + WebSocket */}
           {mode === "predict" && (
             <Panel title="Camera Feed" badge={wsBadge}>
               <div className="flex border-b border-ink">
@@ -445,9 +377,7 @@ export default function App() {
                   </button>
                 ))}
               </div>
-
               <CameraView ref={cameraRef} mode={mode} isTrained={isTrained} />
-
               <div className="flex items-center gap-3 p-3 border-t border-ink">
                 <button
                   onClick={toggleCamera}
@@ -462,8 +392,6 @@ export default function App() {
                 >
                   {cameraOn ? "Stop Camera" : "Start Camera"}
                 </button>
-
-                {/* WebSocket status indicator */}
                 {cameraOn && (
                   <div className="flex items-center gap-2">
                     <span
@@ -488,7 +416,6 @@ export default function App() {
             </Panel>
           )}
 
-          {/* Prediction results */}
           <Panel
             title="Class Probabilities"
             badge={isTrained ? "LIVE" : "IDLE"}
@@ -497,7 +424,6 @@ export default function App() {
           </Panel>
         </div>
 
-        {/* ── Right column ── */}
         <div className="space-y-5">
           <Panel
             title="Classes"
@@ -521,7 +447,7 @@ export default function App() {
             }
           >
             <SampleGallery
-              cls={selectedClass !== null ? classes[selectedClass] : null}
+              cls={selectedCls}
               onDeleteThumb={deleteThumb}
               onClear={clearSamples}
             />
@@ -532,7 +458,7 @@ export default function App() {
               classes={classes}
               totalSamples={totalSamples}
               isTrained={isTrained}
-              isTraining={isTraining}
+              isTraining={trainMut.isPending}
               trainLog={trainLog}
               progress={progress}
               trainTag={trainTag}
