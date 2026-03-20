@@ -7,10 +7,23 @@ export default function PredictionView({ prediction, classes }) {
     );
   }
 
-  const sorted = Object.entries(prediction.probs)
-    .map(([i, p]) => ({ i: parseInt(i), p, cls: classes[parseInt(i)] }))
+  // prediction is { [classDbId]: probability }
+  const sorted = Object.entries(prediction)
+    .map(([id, p]) => ({
+      id: parseInt(id),
+      p,
+      cls: classes.find((c) => c.id === parseInt(id)),
+    }))
     .filter((x) => x.cls)
     .sort((a, b) => b.p - a.p);
+
+  if (sorted.length === 0) {
+    return (
+      <p className="font-mono text-xs text-ink2 italic text-center py-6 px-4">
+        No predictions yet.
+      </p>
+    );
+  }
 
   const top = sorted[0];
 
@@ -24,21 +37,21 @@ export default function PredictionView({ prediction, classes }) {
         <div className="flex items-center gap-3">
           <span
             className="w-3 h-3 rounded-full flex-shrink-0"
-            style={{ background: top?.cls?.color }}
+            style={{ background: top.cls.color }}
           />
           <span className="font-display text-xl italic font-bold text-ink truncate">
-            {top?.cls?.name ?? "—"}
+            {top.cls.name}
           </span>
           <span className="ml-auto font-mono text-sm font-bold text-ember">
-            {Math.round((top?.p ?? 0) * 100)}%
+            {Math.round(top.p * 100)}%
           </span>
         </div>
       </div>
 
       {/* All classes */}
       <div className="divide-y divide-rule">
-        {sorted.map(({ i, p, cls }) => (
-          <div key={i} className="flex items-center gap-2 px-4 py-2">
+        {sorted.map(({ id, p, cls }) => (
+          <div key={id} className="flex items-center gap-2 px-4 py-2">
             <span
               className="w-2 h-2 rounded-full flex-shrink-0"
               style={{ background: cls.color }}

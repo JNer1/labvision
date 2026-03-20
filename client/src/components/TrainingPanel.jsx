@@ -12,7 +12,7 @@ export default function TrainingPanel({
   onLoad,
 }) {
   const canTrain =
-    classes.length >= 2 && classes.every((c) => c.samples.length >= 3);
+    classes.length >= 2 && classes.every((c) => (c.thumbs?.length ?? 0) >= 3);
 
   return (
     <div className="p-4 space-y-4">

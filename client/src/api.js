@@ -6,7 +6,10 @@ async function request(method, path, body) {
     headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`API ${method} ${path} failed: ${res.status}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `${method} ${path} failed: ${res.status}`);
+  }
   if (res.status === 204) return null;
   return res.json();
 }
@@ -23,4 +26,9 @@ export const api = {
   deleteSample: (id) => request("DELETE", `/samples/${id}`),
   deleteSamplesByClass: (classId) =>
     request("DELETE", `/classes/${classId}/samples`),
+
+  // ML
+  train: () => request("POST", "/train"),
+  predict: (image) => request("POST", "/predict", { image }),
+  modelStatus: () => request("GET", "/model/status"),
 };

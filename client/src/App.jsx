@@ -1,9 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import * as tf from "@tensorflow/tfjs";
-
-import { useMobilenet } from "./useMobilenet.js";
-import { createKNN } from "./knn.js";
 import { api } from "./api.js";
+import { useWebSocket } from "./useWebSocket.js";
 
 import StatusBar from "./components/StatusBar.jsx";
 import Panel from "./components/Panel.jsx";
@@ -15,19 +12,12 @@ import TrainingPanel from "./components/TrainingPanel.jsx";
 import PredictionView from "./components/PredictionView.jsx";
 
 export default function App() {
-  const {
-    status: tfStatus,
-    message: tfMessage,
-    embed,
-    isReady,
-  } = useMobilenet();
-
   // ── State ──────────────────────────────────────────────────────────────────
   const [classes, setClasses] = useState([]);
   const [selectedClass, setSelectedClass] = useState(null);
-  const [mode, setMode] = useState("annotate"); // 'annotate' | 'predict'
+  const [mode, setMode] = useState("annotate");
   const [cameraOn, setCameraOn] = useState(false);
-  const [dbReady, setDbReady] = useState(false);
+  const [serverReady, setServerReady] = useState(false);
 
   // Training
   const [isTrained, setIsTrained] = useState(false);
@@ -41,78 +31,136 @@ export default function App() {
   // Prediction
   const [prediction, setPrediction] = useState(null);
 
-  // Status bar
+  // Status
   const [appStatus, setAppStatus] = useState({
     status: "loading",
-    message: "",
+    message: "Connecting to server…",
   });
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const cameraRef = useRef(null);
   const annotatorRef = useRef(null);
-  const knnRef = useRef(createKNN());
-  const predLoopRef = useRef(null);
+  const rafRef = useRef(null); // requestAnimationFrame handle
 
-  // ── Sync TF status ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    setAppStatus({ status: tfStatus, message: tfMessage });
-  }, [tfStatus, tfMessage]);
+  // ── WebSocket — only active in predict mode with camera on ─────────────────
+  const wsEnabled = mode === "predict" && cameraOn && isTrained;
 
-  // ── Load from DB on mount ──────────────────────────────────────────────────
+  const handleWsMessage = useCallback((data) => {
+    if (data.error) {
+      console.warn("Prediction error from server:", data.error);
+      return;
+    }
+    if (data.probabilities) setPrediction(data.probabilities);
+  }, []);
+
+  const { sendFrame, wsStatus } = useWebSocket({
+    onMessage: handleWsMessage,
+    enabled: wsEnabled,
+  });
+
+  // ── Prediction frame loop — rAF drives frame capture, WS sends them ────────
   useEffect(() => {
-    async function loadFromServer() {
+    if (!wsEnabled || wsStatus !== "open") {
+      cancelAnimationFrame(rafRef.current);
+      return;
+    }
+
+    let lastSent = 0;
+    const MIN_INTERVAL = 100; // cap at ~10fps to avoid overwhelming server
+
+    function loop(timestamp) {
+      if (timestamp - lastSent >= MIN_INTERVAL) {
+        const video = cameraRef.current?.getVideo();
+        const cap = cameraRef.current?.getCapture();
+
+        if (video && cap && cameraRef.current?.hasStream()) {
+          cap.width = video.videoWidth || 640;
+          cap.height = video.videoHeight || 480;
+          cap.getContext("2d").drawImage(video, 0, 0);
+          const sent = sendFrame(cap.toDataURL("image/jpeg", 0.6));
+          if (sent) lastSent = timestamp;
+        }
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    }
+
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [wsEnabled, wsStatus, sendFrame]);
+
+  // ── Connect to server + load data ──────────────────────────────────────────
+  useEffect(() => {
+    async function init() {
       try {
-        const savedClasses = await api.listClasses();
-        if (savedClasses.length === 0) {
-          setDbReady(true);
-          return;
+        const status = await api.modelStatus();
+        if (status.trained) {
+          setIsTrained(true);
+          setTrainTag("TRAINED ✓");
+          setProgress(100);
+          setTrainLog(
+            `Model loaded — ${status.n_samples} samples, ${status.n_classes} classes.`,
+          );
         }
 
+        const savedClasses = await api.listClasses();
         const hydrated = await Promise.all(
           savedClasses.map(async (cls) => {
             const rows = await api.listSamples(cls.id);
-            const samples = rows.map((r) => tf.keep(tf.tensor1d(r.embedding)));
             const thumbs = rows.map((r) => r.thumb);
             const sampleIds = rows.map((r) => r.id);
-            return { ...cls, samples, thumbs, sampleIds };
+            return { ...cls, thumbs, sampleIds };
           }),
         );
 
         setClasses(hydrated);
-        setTrainLog(`Restored ${hydrated.length} classes from local database.`);
+        setServerReady(true);
         setAppStatus({
           status: "ready",
-          message: `Loaded ${hydrated.length} classes from DB.`,
+          message: `Server connected. ${hydrated.length} classes loaded.`,
         });
       } catch (e) {
-        console.warn(
-          "Could not reach server — running without persistence.",
-          e,
-        );
         setAppStatus({
-          status: "ready",
-          message: "Server offline — changes will not be saved.",
+          status: "error",
+          message: "Cannot reach server — is python server.py running?",
         });
-      } finally {
-        setDbReady(true);
       }
     }
-    loadFromServer();
+    init();
   }, []);
 
-  // ── Camera (predict mode only) ─────────────────────────────────────────────
+  // Reflect WS status in the app status bar while in predict mode
+  useEffect(() => {
+    if (mode !== "predict" || !cameraOn) return;
+    if (wsStatus === "open") {
+      setAppStatus({
+        status: "ready",
+        message: "WebSocket connected — live predictions running.",
+      });
+    } else if (wsStatus === "connecting") {
+      setAppStatus({
+        status: "loading",
+        message: "Connecting to prediction WebSocket…",
+      });
+    } else {
+      setAppStatus({
+        status: "loading",
+        message: "WebSocket disconnected — reconnecting…",
+      });
+    }
+  }, [wsStatus, mode, cameraOn]);
+
+  // ── Camera ─────────────────────────────────────────────────────────────────
   async function toggleCamera() {
     if (cameraOn) {
       cameraRef.current?.stopCamera();
       setCameraOn(false);
-      stopPredLoop();
+      setPrediction(null);
       setAppStatus({ status: "ready", message: "Camera stopped." });
     } else {
       try {
         await cameraRef.current?.startCamera();
         setCameraOn(true);
-        setAppStatus({ status: "ready", message: "Camera active." });
-        if (isTrained) startPredLoop();
+        // wsEnabled will flip true → useWebSocket connects automatically
       } catch {
         setAppStatus({
           status: "error",
@@ -122,85 +170,6 @@ export default function App() {
     }
   }
 
-  // ── Capture from image annotator ───────────────────────────────────────────
-  const captureFromImage = useCallback(async () => {
-    if (selectedClass === null) return;
-    if (!annotatorRef.current?.hasImage()) return;
-
-    const crop = annotatorRef.current.getCrop();
-    const dataUrl = annotatorRef.current.getCropDataUrl();
-    if (!crop || !dataUrl) return;
-
-    try {
-      const embedding = tf.keep(embed(crop));
-      const embeddingData = await embedding.data();
-
-      const { id: sampleId } = await api.createSample({
-        class_id: classes[selectedClass].id,
-        thumb: dataUrl,
-        embedding: Array.from(embeddingData),
-      });
-
-      setClasses((prev) => {
-        const next = [...prev];
-        next[selectedClass] = {
-          ...next[selectedClass],
-          samples: [...next[selectedClass].samples, embedding],
-          thumbs: [...next[selectedClass].thumbs, dataUrl],
-          sampleIds: [...(next[selectedClass].sampleIds || []), sampleId],
-        };
-        return next;
-      });
-
-      annotatorRef.current.clearBox();
-    } catch (e) {
-      console.error("Capture from image failed", e);
-    }
-  }, [selectedClass, isReady, embed, classes]);
-
-  // ── Prediction loop (camera) ───────────────────────────────────────────────
-  function startPredLoop() {
-    stopPredLoop();
-    if (!isTrained) return;
-
-    async function loop() {
-      const video = cameraRef.current?.getVideo();
-      const cap = cameraRef.current?.getCapture();
-      if (!video || !cap || !cameraRef.current?.hasStream()) return;
-
-      cap.width = video.videoWidth || 224;
-      cap.height = video.videoHeight || 224;
-      cap.getContext("2d").drawImage(video, 0, 0);
-
-      try {
-        const embedding = embed(cap);
-        const k = Math.min(7, knnRef.current.size);
-        const result = await knnRef.current.predict(embedding, k);
-        embedding.dispose();
-        if (result) setPrediction(result);
-      } catch (e) {
-        console.error("Predict error", e);
-      }
-
-      predLoopRef.current = requestAnimationFrame(loop);
-    }
-
-    predLoopRef.current = requestAnimationFrame(loop);
-  }
-
-  function stopPredLoop() {
-    if (predLoopRef.current) {
-      cancelAnimationFrame(predLoopRef.current);
-      predLoopRef.current = null;
-    }
-  }
-
-  // Re-start pred loop when isTrained flips on in predict mode
-  useEffect(() => {
-    if (isTrained && mode === "predict" && cameraOn) startPredLoop();
-    return stopPredLoop;
-  }, [isTrained]);
-
   // ── Mode switch ────────────────────────────────────────────────────────────
   function switchMode(m) {
     if (m === "predict" && !isTrained) {
@@ -208,118 +177,187 @@ export default function App() {
       return;
     }
     setMode(m);
-    if (m === "predict") {
-      if (cameraOn) startPredLoop();
-    } else {
-      stopPredLoop();
+    if (m === "annotate") {
+      // Stop camera — WS disconnects automatically because wsEnabled → false
       cameraRef.current?.stopCamera();
       setCameraOn(false);
       setPrediction(null);
+      setAppStatus({ status: "ready", message: "Switched to annotate mode." });
     }
   }
+
+  // ── Capture from image annotator ───────────────────────────────────────────
+  const captureFromImage = useCallback(async () => {
+    if (selectedClass === null) return;
+    if (!annotatorRef.current?.hasImage()) return;
+
+    const dataUrl = annotatorRef.current.getCropDataUrl();
+    if (!dataUrl) return;
+
+    setAppStatus({ status: "loading", message: "Embedding sample on server…" });
+    try {
+      const { id: sampleId } = await api.createSample({
+        class_id: classes[selectedClass].id,
+        thumb: dataUrl,
+      });
+
+      setClasses((prev) => {
+        const next = [...prev];
+        next[selectedClass] = {
+          ...next[selectedClass],
+          thumbs: [...next[selectedClass].thumbs, dataUrl],
+          sampleIds: [...(next[selectedClass].sampleIds || []), sampleId],
+        };
+        return next;
+      });
+
+      annotatorRef.current.clearBox();
+      setAppStatus({
+        status: "ready",
+        message: "Sample captured and embedded.",
+      });
+    } catch (e) {
+      setAppStatus({
+        status: "error",
+        message: `Capture failed: ${e.message}`,
+      });
+    }
+  }, [selectedClass, classes]);
 
   // ── Training ───────────────────────────────────────────────────────────────
   async function trainModel() {
     setIsTraining(true);
     setTrainTag("TRAINING");
-    setAppStatus({ status: "loading", message: "Building KNN classifier…" });
+    setProgress(0);
+    setAppStatus({ status: "loading", message: "Training KNN on server…" });
+    setTrainLog("Sending training request to server…");
 
-    await new Promise((r) => setTimeout(r, 50));
+    let fakeProgress = 0;
+    const ticker = setInterval(() => {
+      fakeProgress = Math.min(fakeProgress + 4, 90);
+      setProgress(fakeProgress);
+    }, 100);
 
-    knnRef.current.clear();
-    const knn = knnRef.current;
-    let count = 0;
-    const total = classes.reduce((a, c) => a + c.samples.length, 0);
-
-    for (let ci = 0; ci < classes.length; ci++) {
-      for (const emb of classes[ci].samples) {
-        knn.addExample(emb, ci);
-        count++;
-        setProgress(Math.round((count / total) * 100));
-        setTrainLog(`Indexing sample ${count} / ${total}…`);
-        if (count % 15 === 0) await new Promise((r) => setTimeout(r, 0));
-      }
+    try {
+      const result = await api.train();
+      clearInterval(ticker);
+      setProgress(100);
+      setIsTrained(true);
+      setTrainTag("TRAINED ✓");
+      setTrainLog(
+        `Done! ${result.n_samples} samples · ${result.n_classes} classes · ` +
+          `train accuracy ${result.train_accuracy}%`,
+      );
+      setAppStatus({
+        status: "ready",
+        message: `Model trained — ${result.train_accuracy}% accuracy on training data.`,
+      });
+    } catch (e) {
+      clearInterval(ticker);
+      setProgress(0);
+      setTrainTag("ERROR");
+      setTrainLog(`Training failed: ${e.message}`);
+      setAppStatus({ status: "error", message: e.message });
+    } finally {
+      setIsTraining(false);
     }
-
-    setIsTrained(true);
-    setIsTraining(false);
-    setTrainTag("TRAINED ✓");
-    setProgress(100);
-    setTrainLog(
-      `Done! ${total} samples across ${classes.length} classes indexed.`,
-    );
-    setAppStatus({
-      status: "ready",
-      message: `Model ready — ${total} samples, ${classes.length} classes.`,
-    });
-
-    if (mode === "predict" && cameraOn) startPredLoop();
   }
 
   function resetModel() {
-    knnRef.current.clear();
     setIsTrained(false);
     setTrainTag("IDLE");
     setProgress(0);
-    setTrainLog("Model reset. Re-annotate or load a saved model.");
+    setTrainLog("Model reset. Retrain when ready.");
     setPrediction(null);
-    stopPredLoop();
     setAppStatus({ status: "ready", message: "Model reset." });
   }
 
   // ── Class management ───────────────────────────────────────────────────────
   async function addClass(cls) {
-    const created = await api.createClass(cls.name, cls.color);
-    setClasses((prev) => [...prev, { ...cls, id: created.id, sampleIds: [] }]);
+    try {
+      const created = await api.createClass(cls.name, cls.color);
+      setClasses((prev) => [
+        ...prev,
+        { ...cls, id: created.id, thumbs: [], sampleIds: [] },
+      ]);
+    } catch (e) {
+      setAppStatus({
+        status: "error",
+        message: `Failed to add class: ${e.message}`,
+      });
+    }
   }
 
   async function deleteClass(i) {
     if (!confirm(`Delete class "${classes[i].name}" and all its samples?`))
       return;
-    classes[i].samples.forEach((t) => t.dispose());
-    await api.deleteClass(classes[i].id);
-    setClasses((prev) => prev.filter((_, idx) => idx !== i));
-    setSelectedClass((prev) =>
-      prev === i ? null : prev > i ? prev - 1 : prev,
-    );
-    setIsTrained(false);
-    stopPredLoop();
+    try {
+      await api.deleteClass(classes[i].id);
+      setClasses((prev) => prev.filter((_, idx) => idx !== i));
+      setSelectedClass((prev) =>
+        prev === i ? null : prev > i ? prev - 1 : prev,
+      );
+      setIsTrained(false);
+    } catch (e) {
+      setAppStatus({
+        status: "error",
+        message: `Failed to delete class: ${e.message}`,
+      });
+    }
   }
 
   async function deleteThumb(thumbIdx) {
     if (selectedClass === null) return;
     const sampleId = classes[selectedClass].sampleIds?.[thumbIdx];
-    if (sampleId) await api.deleteSample(sampleId);
-    setClasses((prev) => {
-      const next = [...prev];
-      const cls = { ...next[selectedClass] };
-      cls.samples[thumbIdx].dispose();
-      cls.samples = cls.samples.filter((_, i) => i !== thumbIdx);
-      cls.thumbs = cls.thumbs.filter((_, i) => i !== thumbIdx);
-      cls.sampleIds = (cls.sampleIds || []).filter((_, i) => i !== thumbIdx);
-      next[selectedClass] = cls;
-      return next;
-    });
+    if (!sampleId) return;
+    try {
+      await api.deleteSample(sampleId);
+      setClasses((prev) => {
+        const next = [...prev];
+        const cls = { ...next[selectedClass] };
+        cls.thumbs = cls.thumbs.filter((_, i) => i !== thumbIdx);
+        cls.sampleIds = cls.sampleIds.filter((_, i) => i !== thumbIdx);
+        next[selectedClass] = cls;
+        return next;
+      });
+    } catch (e) {
+      setAppStatus({
+        status: "error",
+        message: `Failed to delete sample: ${e.message}`,
+      });
+    }
   }
 
   async function clearSamples() {
     if (selectedClass === null) return;
-    await api.deleteSamplesByClass(classes[selectedClass].id);
-    setClasses((prev) => {
-      const next = [...prev];
-      next[selectedClass].samples.forEach((t) => t.dispose());
-      next[selectedClass] = {
-        ...next[selectedClass],
-        samples: [],
-        thumbs: [],
-        sampleIds: [],
-      };
-      return next;
-    });
+    try {
+      await api.deleteSamplesByClass(classes[selectedClass].id);
+      setClasses((prev) => {
+        const next = [...prev];
+        next[selectedClass] = {
+          ...next[selectedClass],
+          thumbs: [],
+          sampleIds: [],
+        };
+        return next;
+      });
+    } catch (e) {
+      setAppStatus({
+        status: "error",
+        message: `Failed to clear samples: ${e.message}`,
+      });
+    }
   }
 
   // ── Derived ────────────────────────────────────────────────────────────────
-  const totalSamples = classes.reduce((a, c) => a + c.samples.length, 0);
+  const totalSamples = classes.reduce((a, c) => a + (c.thumbs?.length ?? 0), 0);
+
+  // WS indicator badge
+  const wsBadge = wsEnabled
+    ? wsStatus === "open"
+      ? "WS ●"
+      : "WS ○"
+    : "PREDICT";
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -331,13 +369,13 @@ export default function App() {
             Vision<span className="text-ember italic">Lab</span>
           </h1>
           <p className="font-mono text-xs text-ink2 mt-1 tracking-wider">
-            Local · No API · Runs entirely in your browser
+            Local · PyTorch MobileNetV2 · KNN Classifier
           </p>
         </div>
         <div className="font-mono text-[10px] text-ink2 tracking-widest uppercase text-right leading-relaxed">
-          TensorFlow.js · MobileNet v2
+          FastAPI · SQLite · WebSocket
           <br />
-          KNN Transfer Learning
+          scikit-learn KNN
         </div>
       </header>
 
@@ -346,7 +384,7 @@ export default function App() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 items-start">
         {/* ── Left column ── */}
         <div className="space-y-5">
-          {/* Annotate panel — image upload */}
+          {/* Annotate — image upload */}
           {mode === "annotate" && (
             <Panel title="Image Annotator" badge="ANNOTATE">
               <div className="flex border-b border-ink">
@@ -372,7 +410,7 @@ export default function App() {
               <div className="flex gap-2 p-3 border-t border-ink">
                 <button
                   onClick={captureFromImage}
-                  disabled={!isReady || !dbReady || selectedClass === null}
+                  disabled={!serverReady || selectedClass === null}
                   className="flex-1 font-mono text-xs tracking-wider uppercase py-2 px-4
                     bg-ember text-white border border-ember
                     hover:bg-[#a33208] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
@@ -391,9 +429,9 @@ export default function App() {
             </Panel>
           )}
 
-          {/* Predict panel — live camera */}
+          {/* Predict — live camera + WebSocket */}
           {mode === "predict" && (
-            <Panel title="Camera Feed" badge="PREDICT">
+            <Panel title="Camera Feed" badge={wsBadge}>
               <div className="flex border-b border-ink">
                 {["annotate", "predict"].map((m) => (
                   <button
@@ -410,10 +448,10 @@ export default function App() {
 
               <CameraView ref={cameraRef} mode={mode} isTrained={isTrained} />
 
-              <div className="flex gap-2 p-3 border-t border-ink">
+              <div className="flex items-center gap-3 p-3 border-t border-ink">
                 <button
                   onClick={toggleCamera}
-                  disabled={!isReady}
+                  disabled={!serverReady}
                   className={`font-mono text-xs tracking-wider uppercase py-2 px-4
                     border transition-colors disabled:opacity-30 disabled:cursor-not-allowed
                     ${
@@ -424,14 +462,28 @@ export default function App() {
                 >
                   {cameraOn ? "Stop Camera" : "Start Camera"}
                 </button>
-              </div>
 
-              <div className="px-3 pb-3">
-                <p className="font-mono text-[10px] text-ink2 italic">
-                  {isTrained
-                    ? "Live predictions running from camera feed."
-                    : "Train the model first to enable predictions."}
-                </p>
+                {/* WebSocket status indicator */}
+                {cameraOn && (
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        wsStatus === "open"
+                          ? "bg-forest shadow-[0_0_6px_#2a6e4a]"
+                          : wsStatus === "connecting"
+                            ? "bg-amber animate-blink"
+                            : "bg-red-400"
+                      }`}
+                    />
+                    <span className="font-mono text-[10px] text-ink2 tracking-wide uppercase">
+                      {wsStatus === "open"
+                        ? "WebSocket live"
+                        : wsStatus === "connecting"
+                          ? "Connecting…"
+                          : "Reconnecting…"}
+                    </span>
+                  </div>
+                )}
               </div>
             </Panel>
           )}
