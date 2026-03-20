@@ -138,7 +138,13 @@ class SampleIn(BaseModel):
 @app.get("/classes")
 def list_classes():
     with get_db() as db:
-        rows = db.execute("SELECT * FROM classes ORDER BY id").fetchall()
+        rows = db.execute("""
+            SELECT c.id, c.name, c.color, COUNT(s.id) as sample_count
+            FROM classes c
+            LEFT JOIN samples s ON s.class_id = c.id
+            GROUP BY c.id
+            ORDER BY c.id
+        """).fetchall()
     return [dict(r) for r in rows]
 
 

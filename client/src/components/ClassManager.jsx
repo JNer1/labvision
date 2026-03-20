@@ -64,7 +64,7 @@ export default function ClassManager({
               {cls.name}
             </span>
             <span className="font-mono text-[10px] text-ink2 tracking-wide">
-              {cls.thumbs?.length ?? 0} samples
+              {cls.sample_count} samples
             </span>
             <span
               onClick={(e) => {

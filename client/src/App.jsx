@@ -303,13 +303,8 @@ export default function App() {
             Vision<span className="text-ember italic">Lab</span>
           </h1>
           <p className="font-mono text-xs text-ink2 mt-1 tracking-wider">
-            Local · PyTorch MobileNetV2 · KNN Classifier
+            For the lazy microbiologist
           </p>
-        </div>
-        <div className="font-mono text-[10px] text-ink2 tracking-widest uppercase text-right leading-relaxed">
-          FastAPI · SQLite · WebSocket
-          <br />
-          Tanstack Query · scikit-learn
         </div>
       </header>
 
