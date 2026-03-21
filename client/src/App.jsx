@@ -300,7 +300,7 @@ export default function App() {
       <header className="border-b-2 border-ink pb-4 mb-6 flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-4xl font-bold tracking-tight leading-none">
-            Vision<span className="text-ember italic">Lab</span>
+            Lab<span className="text-ember italic">Vision</span>
           </h1>
           <p className="font-mono text-xs text-ink2 mt-1 tracking-wider">
             For the lazy microbiologist

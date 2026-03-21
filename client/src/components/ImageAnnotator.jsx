@@ -267,7 +267,7 @@ const ImageAnnotator = forwardRef(function ImageAnnotator(
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
-        <div className="text-5xl opacity-20">⊕</div>
+        <div className="text-5xl opacity-20">📁</div>
         <div className="font-mono text-xs text-ink2 tracking-widest uppercase text-center leading-relaxed">
           Drop images here
           <br />
