@@ -15,7 +15,7 @@ export default function TrainingPanel({
     classes.length >= 2 && classes.every((c) => (c.thumbs?.length ?? 0) >= 3);
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="space-y-4 p-4">
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3">
         {[
@@ -24,12 +24,12 @@ export default function TrainingPanel({
         ].map(({ num, label }) => (
           <div
             key={label}
-            className="bg-sand border border-rule p-3 text-center"
+            className="border border-rule bg-sand p-3 text-center"
           >
-            <div className="font-display text-3xl font-bold text-ember leading-none">
+            <div className="font-display text-3xl font-bold leading-none text-ember">
               {num}
             </div>
-            <div className="font-mono text-[9px] text-ink2 tracking-[2px] uppercase mt-1">
+            <div className="mt-1 font-mono text-[9px] uppercase tracking-[2px] text-ink2">
               {label}
             </div>
           </div>
@@ -37,12 +37,12 @@ export default function TrainingPanel({
       </div>
 
       {/* Log */}
-      <p className="font-mono text-[10px] text-ink2 italic leading-relaxed min-h-[2.5rem]">
+      <p className="min-h-[2.5rem] font-mono text-[10px] italic leading-relaxed text-ink2">
         {trainLog}
       </p>
 
       {/* Progress bar */}
-      <div className="h-1.5 bg-rule w-full overflow-hidden">
+      <div className="h-1.5 w-full overflow-hidden bg-rule">
         <div
           className="h-full bg-forest transition-all duration-200"
           style={{ width: `${progress}%` }}
@@ -54,42 +54,29 @@ export default function TrainingPanel({
         <button
           onClick={onTrain}
           disabled={!canTrain || isTraining}
-          className="flex-1 font-mono text-xs tracking-wider uppercase py-2.5 px-4
-                     bg-forest border border-forest text-white
-                     hover:bg-[#1e5438] disabled:opacity-30 disabled:cursor-not-allowed
-                     transition-colors"
+          className="flex-1 border border-forest bg-forest px-4 py-2.5 font-mono text-xs uppercase tracking-wider text-white transition-colors hover:bg-[#1e5438] disabled:cursor-not-allowed disabled:opacity-30"
         >
           {isTraining ? "⟳ Training…" : "▶ Train Model"}
         </button>
         <button
           onClick={onReset}
           disabled={!isTrained}
-          className="font-mono text-[10px] tracking-wider uppercase py-2 px-3
-                     border border-rule text-ink2
-                     hover:bg-ink hover:text-paper hover:border-ink
-                     disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="border border-rule px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-ink2 transition-colors hover:border-ink hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-30"
         >
           Reset
         </button>
       </div>
 
       {/* Save / Load */}
-      <div className="flex gap-2 pt-1 border-t border-rule">
+      <div className="flex gap-2 border-t border-rule pt-1">
         <button
           onClick={onSave}
           disabled={!isTrained}
-          className="font-mono text-[10px] tracking-wider uppercase py-1.5 px-3
-                     border border-rule text-ink2
-                     hover:bg-ink hover:text-paper hover:border-ink
-                     disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="border border-rule px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-ink2 transition-colors hover:border-ink hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-30"
         >
           ↓ Save Model
         </button>
-        <label
-          className="font-mono text-[10px] tracking-wider uppercase py-1.5 px-3
-                          border border-rule text-ink2 cursor-pointer
-                          hover:bg-ink hover:text-paper hover:border-ink transition-colors"
-        >
+        <label className="cursor-pointer border border-rule px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-ink2 transition-colors hover:border-ink hover:bg-ink hover:text-paper">
           ↑ Load Model
           <input
             type="file"

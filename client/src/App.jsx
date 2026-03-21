@@ -296,13 +296,13 @@ export default function App() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="relative z-10 max-w-5xl mx-auto px-4 py-8 pb-20">
-      <header className="border-b-2 border-ink pb-4 mb-6 flex items-end justify-between flex-wrap gap-3">
+    <div className="relative z-10 mx-auto max-w-5xl px-4 py-8 pb-20">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b-2 border-ink pb-4">
         <div>
-          <h1 className="font-display text-4xl font-bold tracking-tight leading-none">
-            Lab<span className="text-ember italic">Vision</span>
+          <h1 className="font-display text-4xl font-bold leading-none tracking-tight">
+            Lab<span className="italic text-ember">Vision</span>
           </h1>
-          <p className="font-mono text-xs text-ink2 mt-1 tracking-wider">
+          <p className="mt-1 font-mono text-xs tracking-wider text-ink2">
             For the lazy microbiologist
           </p>
         </div>
@@ -310,7 +310,7 @@ export default function App() {
 
       <StatusBar status={appStatus.status} message={appStatus.message} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 items-start">
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[1fr_360px]">
         <div className="space-y-5">
           {mode === "annotate" && (
             <Panel title="Image Annotator" badge="ANNOTATE">
@@ -319,9 +319,7 @@ export default function App() {
                   <button
                     key={m}
                     onClick={() => switchMode(m)}
-                    className={`flex-1 font-mono text-[10px] tracking-[2px] uppercase py-2.5
-                      transition-colors border-r border-rule last:border-r-0
-                      ${mode === m ? "bg-ink text-amber" : "bg-sand text-ink2 hover:bg-rule"}`}
+                    className={`flex-1 border-r border-rule py-2.5 font-mono text-[10px] uppercase tracking-[2px] transition-colors last:border-r-0 ${mode === m ? "bg-ink text-amber" : "bg-sand text-ink2 hover:bg-rule"}`}
                   >
                     {m === "annotate" ? "◉ Annotate" : "◎ Predict"}
                   </button>
@@ -332,7 +330,7 @@ export default function App() {
                 selectedClass={selectedClass}
                 classes={classes}
               />
-              <div className="flex gap-2 p-3 border-t border-ink">
+              <div className="flex gap-2 border-t border-ink p-3">
                 <button
                   onClick={captureFromImage}
                   disabled={
@@ -340,15 +338,13 @@ export default function App() {
                     selectedClass === null ||
                     addSampleMut.isPending
                   }
-                  className="flex-1 font-mono text-xs tracking-wider uppercase py-2 px-4
-                    bg-ember text-white border border-ember
-                    hover:bg-[#a33208] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="flex-1 border border-ember bg-ember px-4 py-2 font-mono text-xs uppercase tracking-wider text-white transition-colors hover:bg-[#a33208] disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   {addSampleMut.isPending ? "⟳ Embedding…" : "⊕ Capture Crop"}
                 </button>
               </div>
               <div className="px-3 pb-3">
-                <p className="font-mono text-[10px] text-ink2 italic">
+                <p className="font-mono text-[10px] italic text-ink2">
                   {selectedClass !== null
                     ? `Drawing into "${classes[selectedClass]?.name}" — draw a box then Capture Crop`
                     : "← Select a class first, then draw a bounding box on the image."}
@@ -364,41 +360,37 @@ export default function App() {
                   <button
                     key={m}
                     onClick={() => switchMode(m)}
-                    className={`flex-1 font-mono text-[10px] tracking-[2px] uppercase py-2.5
-                      transition-colors border-r border-rule last:border-r-0
-                      ${mode === m ? "bg-ink text-amber" : "bg-sand text-ink2 hover:bg-rule"}`}
+                    className={`flex-1 border-r border-rule py-2.5 font-mono text-[10px] uppercase tracking-[2px] transition-colors last:border-r-0 ${mode === m ? "bg-ink text-amber" : "bg-sand text-ink2 hover:bg-rule"}`}
                   >
                     {m === "annotate" ? "◉ Annotate" : "◎ Predict"}
                   </button>
                 ))}
               </div>
               <CameraView ref={cameraRef} mode={mode} isTrained={isTrained} />
-              <div className="flex items-center gap-3 p-3 border-t border-ink">
+              <div className="flex items-center gap-3 border-t border-ink p-3">
                 <button
                   onClick={toggleCamera}
                   disabled={!serverReady}
-                  className={`font-mono text-xs tracking-wider uppercase py-2 px-4
-                    border transition-colors disabled:opacity-30 disabled:cursor-not-allowed
-                    ${
-                      cameraOn
-                        ? "bg-ink text-paper border-ink hover:bg-ink2"
-                        : "bg-ember text-white border-ember hover:bg-[#a33208]"
-                    }`}
+                  className={`border px-4 py-2 font-mono text-xs uppercase tracking-wider transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${
+                    cameraOn
+                      ? "border-ink bg-ink text-paper hover:bg-ink2"
+                      : "border-ember bg-ember text-white hover:bg-[#a33208]"
+                  }`}
                 >
                   {cameraOn ? "Stop Camera" : "Start Camera"}
                 </button>
                 {cameraOn && (
                   <div className="flex items-center gap-2">
                     <span
-                      className={`w-2 h-2 rounded-full ${
+                      className={`h-2 w-2 rounded-full ${
                         wsStatus === "open"
                           ? "bg-forest shadow-[0_0_6px_#2a6e4a]"
                           : wsStatus === "connecting"
-                            ? "bg-amber animate-blink"
+                            ? "animate-blink bg-amber"
                             : "bg-red-400"
                       }`}
                     />
-                    <span className="font-mono text-[10px] text-ink2 tracking-wide uppercase">
+                    <span className="font-mono text-[10px] uppercase tracking-wide text-ink2">
                       {wsStatus === "open"
                         ? "WebSocket live"
                         : wsStatus === "connecting"

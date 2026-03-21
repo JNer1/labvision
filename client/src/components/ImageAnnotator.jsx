@@ -255,9 +255,7 @@ const ImageAnnotator = forwardRef(function ImageAnnotator(
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
         onClick={() => document.getElementById("img-upload").click()}
-        className="flex flex-col items-center justify-center gap-4
-                   border-2 border-dashed border-rule bg-sand aspect-[4/3]
-                   cursor-pointer transition-colors hover:border-ember hover:bg-ember/5"
+        className="flex aspect-[4/3] cursor-pointer flex-col items-center justify-center gap-4 border-2 border-dashed border-rule bg-sand transition-colors hover:border-ember hover:bg-ember/5"
       >
         <input
           id="img-upload"
@@ -268,7 +266,7 @@ const ImageAnnotator = forwardRef(function ImageAnnotator(
           onChange={(e) => handleFiles(e.target.files)}
         />
         <div className="text-5xl opacity-20">📁</div>
-        <div className="font-mono text-xs text-ink2 tracking-widest uppercase text-center leading-relaxed">
+        <div className="text-center font-mono text-xs uppercase leading-relaxed tracking-widest text-ink2">
           Drop images here
           <br />
           or click to upload
@@ -288,7 +286,7 @@ const ImageAnnotator = forwardRef(function ImageAnnotator(
           ref={canvasRef}
           width={640}
           height={480}
-          className="w-full aspect-[4/3] block"
+          className="block aspect-[4/3] w-full"
           style={{ touchAction: "none" }}
           onPointerDown={onPointerDown}
           onPointerMove={(e) => {
@@ -300,8 +298,8 @@ const ImageAnnotator = forwardRef(function ImageAnnotator(
         <canvas ref={cropCanvasRef} className="hidden" />
 
         {imageLoaded && !box && (
-          <div className="absolute bottom-2 left-0 right-0 flex justify-center pointer-events-none">
-            <span className="font-mono text-[10px] text-white/70 bg-black/50 px-2 py-1 tracking-wider">
+          <div className="pointer-events-none absolute bottom-2 left-0 right-0 flex justify-center">
+            <span className="bg-black/50 px-2 py-1 font-mono text-[10px] tracking-wider text-white/70">
               DRAG TO DRAW BOUNDING BOX
             </span>
           </div>
@@ -309,20 +307,18 @@ const ImageAnnotator = forwardRef(function ImageAnnotator(
       </div>
 
       {/* Queue navigation */}
-      <div className="flex items-center gap-2 px-3 py-2 border-t border-ink bg-sand">
+      <div className="flex items-center gap-2 border-t border-ink bg-sand px-3 py-2">
         <button
           onClick={() => {
             setQueueIdx((i) => Math.max(i - 1, 0));
             updateBox(null);
           }}
           disabled={queueIdx === 0}
-          className="font-mono text-xs px-2 py-1 border border-rule
-                     hover:bg-ink hover:text-paper hover:border-ink
-                     disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="border border-rule px-2 py-1 font-mono text-xs transition-colors hover:border-ink hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-30"
         >
           ←
         </button>
-        <span className="flex-1 font-mono text-[10px] text-ink2 truncate text-center tracking-wide">
+        <span className="flex-1 truncate text-center font-mono text-[10px] tracking-wide text-ink2">
           {currentImage?.name} &nbsp;({queueIdx + 1} / {queue.length})
         </span>
         <button
@@ -331,17 +327,13 @@ const ImageAnnotator = forwardRef(function ImageAnnotator(
             updateBox(null);
           }}
           disabled={queueIdx === queue.length - 1}
-          className="font-mono text-xs px-2 py-1 border border-rule
-                     hover:bg-ink hover:text-paper hover:border-ink
-                     disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="border border-rule px-2 py-1 font-mono text-xs transition-colors hover:border-ink hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-30"
         >
           →
         </button>
         <button
           onClick={() => document.getElementById("img-upload-more").click()}
-          className="font-mono text-[10px] tracking-wider uppercase px-2 py-1
-                     border border-rule text-ink2
-                     hover:bg-ink hover:text-paper hover:border-ink transition-colors"
+          className="border border-rule px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-ink2 transition-colors hover:border-ink hover:bg-ink hover:text-paper"
         >
           + Add
         </button>

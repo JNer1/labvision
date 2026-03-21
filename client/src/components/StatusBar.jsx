@@ -9,8 +9,8 @@ export default function StatusBar({ status, message }) {
           : "bg-rule";
 
   return (
-    <div className="relative z-10 flex items-center gap-3 bg-ink text-amber px-4 py-2 font-mono text-xs tracking-widest uppercase mb-6">
-      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+    <div className="relative z-10 mb-6 flex items-center gap-3 bg-ink px-4 py-2 font-mono text-xs uppercase tracking-widest text-amber">
+      <span className={`h-2 w-2 flex-shrink-0 rounded-full ${dotColor}`} />
       <span className="truncate">{message}</span>
     </div>
   );

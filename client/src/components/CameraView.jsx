@@ -44,20 +44,20 @@ const CameraView = forwardRef(function CameraView(
         autoPlay
         playsInline
         muted
-        className="w-full aspect-[4/3] object-cover block"
+        className="block aspect-[4/3] w-full object-cover"
       />
       <canvas ref={captureRef} className="hidden" />
 
       {/* Flash overlay */}
       <div
         ref={flashRef}
-        className="absolute inset-0 bg-white pointer-events-none transition-opacity duration-100"
+        className="pointer-events-none absolute inset-0 bg-white transition-opacity duration-100"
         style={{ opacity: 0 }}
       />
 
       {/* Scan line in predict mode */}
       {mode === "predict" && isTrained && (
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div className="scan-line" />
         </div>
       )}
@@ -69,7 +69,7 @@ const CameraView = forwardRef(function CameraView(
         "bottom-2 left-2 border-b-2 border-l-2",
         "bottom-2 right-2 border-b-2 border-r-2",
       ].map((cls, i) => (
-        <div key={i} className={`absolute w-5 h-5 border-ember/60 ${cls}`} />
+        <div key={i} className={`absolute h-5 w-5 border-ember/60 ${cls}`} />
       ))}
     </div>
   );
